@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import URL
 
@@ -39,6 +40,21 @@ class Settings(BaseSettings):
 
     # В .env.local задаётся JSON-списком: CORS_ORIGINS='["http://localhost:5173"]'
     CORS_ORIGINS: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
+
+    # GigaChat — языковая модель для функций на основе LLM. Без ключа приложение
+    # работает, а эти функции отвечают 503: ключ не нужен ни тестам, ни CI.
+    # SecretStr не показывает значение в repr и сообщениях об ошибках
+    GIGACHAT_CREDENTIALS: SecretStr | None = None
+    # GIGACHAT_API_PERS — доступ для физлиц, в том числе бесплатный
+    GIGACHAT_SCOPE: str = "GIGACHAT_API_PERS"
+    # GigaChat-2 — это Lite: быстрее и в разы дешевле GigaChat-2-Pro
+    GIGACHAT_MODEL: str = "GigaChat-2"
+    # Корневой сертификат Минцифры, которым подписаны серверы GigaChat (certs/README.md)
+    GIGACHAT_CA_BUNDLE_FILE: Path = (
+        BASE_DIR / "certs" / "russian_trusted_root_ca_pem.crt"
+    )
+    # Ответа ждёт человек: дольше 10 секунд лучше показать ошибку
+    GIGACHAT_TIMEOUT: float = 10
 
     model_config = SettingsConfigDict(
         env_file=ENV_PATH,

@@ -8,6 +8,7 @@ from src.auth.api.v1.views import auth
 from src.category.api.v1.views import category
 from src.database import engine
 from src.health.views import health
+from src.llm.client import llm_client
 from src.operation.api.v1.views import operation
 from src.redis_client import redis_client
 from src.settings import settings
@@ -19,6 +20,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     # При остановке закрываем пулы соединений. uvicorn запускает этот код, только
     # когда текущие запросы уже обработаны, поэтому соединения больше никому не нужны
     await redis_client.aclose()
+    if llm_client is not None:
+        await llm_client.aclose()
     await engine.dispose()
 
 

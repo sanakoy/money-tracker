@@ -11,6 +11,8 @@ dependencies = [
     "bcrypt>=5.0.0",
     "email-validator>=2.3.0",
     "fastapi>=0.141.1",
+    "gigachat>=0.2.3",
+    "httpx>=0.28.1",
     "pydantic>=2.12.3",
     "pydantic-settings>=2.11.0",
     "pyjwt>=2.10.1",
@@ -23,7 +25,6 @@ dependencies = [
 [dependency-groups]
 dev = [
     "black>=25.9.0",
-    "httpx>=0.28.1",
     "mypy>=2.3.1",
     "pytest>=9.0.2",
     "pytest-asyncio>=1.4.0",

@@ -31,6 +31,7 @@ WORKDIR /app
 COPY --from=builder --chown=app:app /app/.venv /app/.venv
 COPY --chown=app:app alembic.ini pyproject.toml ./
 COPY --chown=app:app migrations ./migrations
+COPY --chown=app:app certs ./certs
 COPY --chown=app:app src ./src
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh

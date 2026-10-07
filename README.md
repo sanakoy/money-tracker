@@ -83,7 +83,8 @@ npm run gen:api    # типы API из OpenAPI бэкенда в src/api/schema.
 ### Тесты и проверки
 
 ```bash
-uv run pytest                    # 168 тестов против настоящих PostgreSQL и Redis
+uv run pytest                    # 178 тестов против настоящих PostgreSQL и Redis
+uv run pytest -m live            # тесты с настоящим GigaChat: сеть, ключ в .env
 uv run ruff check src tests      # линтер
 uv run black --check src tests   # форматирование
 uv run mypy                      # типы
@@ -193,11 +194,13 @@ src/<домен>/
 │   ├── category/        # категории и статистика
 │   ├── operation/       # операции
 │   ├── health/          # /health и /ready
+│   ├── llm/             # клиент языковой модели (GigaChat)
 │   ├── database.py      # движок и сессии SQLAlchemy
 │   ├── redis_client.py  # клиент Redis
 │   ├── settings.py      # настройки из .env
 │   └── main.py          # приложение, CORS, lifespan
 ├── migrations/          # миграции Alembic
+├── certs/               # корневой сертификат Минцифры для GigaChat
 ├── tests/               # pytest
 ├── docker/              # entrypoint контейнера бэкенда
 ├── frontend/            # React-приложение
