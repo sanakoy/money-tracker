@@ -17,14 +17,26 @@ import { todayIsoDate } from '@/lib/month'
 
 import { useCreateOperation } from './queries'
 import {
+  amountToInput,
   COMMENT_MAX_LENGTH,
   validateOperationFields,
   type OperationFieldErrors,
 } from './validation'
 
+/** Что предложила модель по фразе: окно откроется уже заполненным. */
+export interface OperationDraftValues {
+  /** null — суммы во фразе не было, её впишет человек. */
+  sum: number | null
+  /** «2026-10-07» */
+  date: string
+  comment: string | null
+}
+
 interface NewOperationDialogProps {
   /** Категория, в которую пишем; null — окно закрыто. */
   category: Category | null
+  /** Черновик из фразы. Без него — пустая сумма и сегодняшняя дата. */
+  draft?: OperationDraftValues | null
   /** Плитка, с которой открыли окно: после закрытия фокус вернётся на неё. */
   returnFocusTo: RefObject<HTMLElement | null>
   onClose: () => void
@@ -42,6 +54,7 @@ interface NewOperationDialogProps {
 
 export function NewOperationDialog({
   category,
+  draft,
   returnFocusTo,
   onClose,
   onSaved,
@@ -67,6 +80,7 @@ export function NewOperationDialog({
           <NewOperationForm
             key={category.id}
             category={category}
+            draft={draft ?? null}
             onClose={onClose}
             onSaved={onSaved}
             onEditCategory={onEditCategory}
@@ -79,13 +93,17 @@ export function NewOperationDialog({
 
 function NewOperationForm({
   category,
+  draft,
   onClose,
   onSaved,
   onEditCategory,
-}: Pick<NewOperationDialogProps, 'onClose' | 'onSaved' | 'onEditCategory'> & { category: Category }) {
-  const [amount, setAmount] = useState('')
-  const [date, setDate] = useState(todayIsoDate)
-  const [comment, setComment] = useState('')
+}: Pick<NewOperationDialogProps, 'onClose' | 'onSaved' | 'onEditCategory'> & {
+  category: Category
+  draft: OperationDraftValues | null
+}) {
+  const [amount, setAmount] = useState(draft?.sum != null ? amountToInput(draft.sum) : '')
+  const [date, setDate] = useState(() => draft?.date ?? todayIsoDate())
+  const [comment, setComment] = useState(draft?.comment ?? '')
   const [errors, setErrors] = useState<OperationFieldErrors>({})
   const [formError, setFormError] = useState<string | null>(null)
   const create = useCreateOperation()
@@ -133,7 +151,8 @@ function NewOperationForm({
             {kindLabel}: {category.name}
           </DialogTitle>
           <DialogDescription>
-            Новая запись.{' '}
+            {/* Черновик предложила модель: напоминаем, что его стоит проверить */}
+            {draft ? 'Запись из фразы — проверьте её.' : 'Новая запись.'}{' '}
             {/* Управление категорией живёт здесь: плитка и так ведёт в её окно */}
             <button
               type="button"

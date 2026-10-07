@@ -1,14 +1,15 @@
 import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query'
 
 import { api } from '@/api/client'
-import { ensureOk } from '@/api/errors'
+import { ApiError, detailOf, ensureOk } from '@/api/errors'
 import type { components } from '@/api/schema'
-import type { YearMonth } from '@/lib/month'
+import { todayIsoDate, type YearMonth } from '@/lib/month'
 import { queryKeys, refreshLedger } from '@/query-client'
 
 export type Operation = components['schemas']['OperationView']
 export type NewOperation = components['schemas']['CreateOperationRequest']
 export type OperationChanges = components['schemas']['UpdateOperationRequest']
+export type OperationDraft = components['schemas']['OperationDraft']
 
 export function useMonthOperations(month: YearMonth) {
   return useQuery({
@@ -38,6 +39,23 @@ export function usePeriodOperations(from: string, to: string) {
       return data.data
     },
     placeholderData: keepPreviousData,
+  })
+}
+
+/**
+ * Черновик записи из фразы «кофе 350 вчера»: модель предлагает, человек
+ * проверяет его в окне записи. Сам разбор ничего не записывает.
+ */
+export function useParsePhrase() {
+  return useMutation({
+    mutationFn: async (text: string) => {
+      const { data, error, response } = await api.POST('/api/v1/operations/parse', {
+        // «Вчера» считается от дня пользователя, а не от дня сервера в UTC
+        body: { text, today: todayIsoDate() },
+      })
+      if (!data) throw new ApiError(response.status, detailOf(error))
+      return data
+    },
   })
 }
 

@@ -17,8 +17,9 @@ import {
 import { CategoryTiles, type TileStamp } from '@/operations/category-tiles'
 import { MonthSummary } from '@/operations/month-summary'
 import { MonthSwitcher } from '@/operations/month-switcher'
-import { NewOperationDialog } from '@/operations/new-operation-dialog'
-import { useMonthOperations } from '@/operations/queries'
+import { NewOperationDialog, type OperationDraftValues } from '@/operations/new-operation-dialog'
+import { PhraseInput } from '@/operations/phrase-input'
+import { useMonthOperations, type OperationDraft } from '@/operations/queries'
 import { summarize } from '@/operations/summary'
 
 // Окно категории нужно редко, а тянет за собой выбор иконки (Popover и
@@ -48,6 +49,9 @@ export function LedgerPage() {
 
   // Категория, в которую сейчас пишем; null — окно закрыто
   const [selected, setSelected] = useState<Category | null>(null)
+  // Окно открыто по фразе: значения, которые предложила модель
+  const [draft, setDraft] = useState<OperationDraftValues | null>(null)
+  const [phrase, setPhrase] = useState('')
   const openerRef = useRef<HTMLElement | null>(null)
   const [stamp, setStamp] = useState<TileStamp | null>(null)
   // То же, что штамп, но для скринридера: штамп он не видит
@@ -81,7 +85,19 @@ export function LedgerPage() {
     setSearchParams({ month: formatMonthParam(next) })
   }
 
+  function openDraft(parsed: OperationDraft, input: HTMLInputElement) {
+    openerRef.current = input
+    // Плитки за окном — того же типа, что категория черновика: после записи
+    // штамп встанет на её плитку, а не останется невидимым на другой вкладке
+    setKind(parsed.category.is_profit ? 'profit' : 'spending')
+    setDraft({ sum: parsed.sum, date: parsed.date, comment: parsed.comment })
+    setSelected(parsed.category)
+  }
+
   function handleSaved(category: Category, amount: number, isoDate: string) {
+    // Фраза записана — поле свободно для следующей. Если окно закрыли без
+    // записи, фраза остаётся: её можно поправить и разобрать снова
+    if (draft) setPhrase('')
     setStamp({ categoryId: category.id, key: Date.now() })
     setAnnouncement(`Записано: ${formatAmount(amount)} в «${category.name}».`)
     // Запись в другой месяц иначе «пропала» бы: показываем месяц, куда она легла
@@ -112,10 +128,13 @@ export function LedgerPage() {
           </h2>
           <KindToggle name="ledger-kind" value={kind} onChange={setKind} />
         </div>
-        <p id="tiles-hint" className="mt-1 text-sm text-muted-foreground">
+        <div className="mt-3">
+          <PhraseInput value={phrase} onChange={setPhrase} onDraft={openDraft} />
+        </div>
+        <p id="tiles-hint" className="mt-3 text-sm text-muted-foreground">
           {tiles?.length === 0
             ? `${EMPTY_CATEGORIES[kind]} Добавьте первую плиткой «+».`
-            : `Нажмите на категорию, чтобы записать ${KIND_WORD[kind]}.`}
+            : `Или нажмите на категорию, чтобы записать ${KIND_WORD[kind]}.`}
         </p>
 
         <div className="mt-4">
@@ -130,6 +149,7 @@ export function LedgerPage() {
               stamp={stamp}
               onSelect={(category, tile) => {
                 openerRef.current = tile
+                setDraft(null)
                 setSelected(category)
               }}
               onCreate={(tile) => {
@@ -160,6 +180,7 @@ export function LedgerPage() {
 
       <NewOperationDialog
         category={selected}
+        draft={draft}
         returnFocusTo={openerRef}
         onClose={() => setSelected(null)}
         onSaved={handleSaved}

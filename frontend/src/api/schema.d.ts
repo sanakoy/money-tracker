@@ -12,12 +12,12 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * ��� �� �������
-         * @description �������� ��� ��������� � �� � Redis.
+         * Жив ли процесс
+         * @description Проверка без обращения к БД и Redis.
          *
-         *     �� ��� ����������� ������, �� ����� �� ������� � �� ���� �� ��� �������������.
-         *     ���� �� ��� ������ � ��, ����������� ���� ��������� �� � �����������
-         *     ������������ ����������, ������� ���� �� ���� ��������.
+         *     По ней оркестратор решает, не завис ли процесс и не пора ли его перезапустить.
+         *     Если бы она ходила в БД, недоступная база приводила бы к бесконечным
+         *     перезапускам приложения, которое само по себе исправно.
          */
         get: operations["liveness_health_get"];
         put?: never;
@@ -36,10 +36,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * ����� �� ����������� �������
-         * @description �������� ������������: �� � Redis.
+         * Готов ли обслуживать запросы
+         * @description Проверка зависимостей: БД и Redis.
          *
-         *     �� ��� ������������� ������, ����� �� �� ���� ��������� ������.
+         *     По ней балансировщик решает, слать ли на этот экземпляр трафик.
          */
         get: operations["readiness_ready_get"];
         put?: never;
@@ -57,7 +57,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** ��������� �������� � ������� �� ����� */
+        /** Категории расходов с суммами за месяц */
         get: operations["get_spending_categories_api_v1_categories_spending_get"];
         put?: never;
         post?: never;
@@ -74,7 +74,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** ��������� ������� � ������� �� ����� */
+        /** Категории доходов с суммами за месяц */
         get: operations["get_profit_categories_api_v1_categories_profit_get"];
         put?: never;
         post?: never;
@@ -93,7 +93,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** �������� ��������� */
+        /** Создание категории */
         post: operations["create_category_api_v1_categories_create_post"];
         delete?: never;
         options?: never;
@@ -114,7 +114,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** ���������� ��������� */
+        /** Обновление категории */
         patch: operations["update_category_api_v1_categories_update__category_id__patch"];
         trace?: never;
     };
@@ -128,7 +128,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** �������� ��������� */
+        /** Удаление категории */
         delete: operations["delete_category_api_v1_categories_delete__category_id__delete"];
         options?: never;
         head?: never;
@@ -144,7 +144,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** ����������� �� email � ������ */
+        /** Регистрация по email и паролю */
         post: operations["register_api_v1_auth_register_post"];
         delete?: never;
         options?: never;
@@ -161,7 +161,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** ����: access-����� � ���� ������, refresh-����� � httpOnly cookie */
+        /** Вход: access-токен в теле ответа, refresh-токен в httpOnly cookie */
         post: operations["login_api_v1_auth_login_post"];
         delete?: never;
         options?: never;
@@ -178,7 +178,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** ����� access-����� �� refresh-������ �� cookie, refresh ���������� */
+        /** Новый access-токен по refresh-токену из cookie, refresh ротируется */
         post: operations["refresh_api_v1_auth_refresh_post"];
         delete?: never;
         options?: never;
@@ -195,7 +195,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** �����: refresh-����� ����������, cookie ��������� */
+        /** Выход: refresh-токен отзывается, cookie удаляется */
         post: operations["logout_api_v1_auth_logout_post"];
         delete?: never;
         options?: never;
@@ -210,7 +210,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** ������� ������������ */
+        /** Текущий пользователь */
         get: operations["me_api_v1_auth_me_get"];
         put?: never;
         post?: never;
@@ -227,7 +227,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** ������ �������� � ��������� */
+        /** Список операций с фильтрами */
         get: operations["get_operations_api_v1_operations_get"];
         put?: never;
         post?: never;
@@ -244,10 +244,33 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** ������ � ������� �� ������ �� ���������� � ���� */
+        /** Доходы и расходы за период по категориям и дням */
         get: operations["get_period_totals_api_v1_operations_totals_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/operations/parse": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Черновик операции из фразы вроде «кофе 350 вчера»
+         * @description Ничего не записывает: черновик проверяет человек и сохраняет через /create.
+         *
+         *     422 со строкой в detail — фразу не удалось отнести ни к одной категории
+         *     пользователя или категорий у него пока нет.
+         */
+        post: operations["parse_phrase_api_v1_operations_parse_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -263,7 +286,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** �������� �������� */
+        /** Создание операции */
         post: operations["create_operation_api_v1_operations_create_post"];
         delete?: never;
         options?: never;
@@ -284,7 +307,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** ���������� �������� */
+        /** Обновление операции */
         patch: operations["update_operation_api_v1_operations_update__operation_id__patch"];
         trace?: never;
     };
@@ -298,7 +321,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** �������� �������� */
+        /** Удаление операции */
         delete: operations["delete_operation_api_v1_operations_delete__operation_id__delete"];
         options?: never;
         head?: never;
@@ -420,6 +443,23 @@ export interface components {
             /** Password */
             password: string;
         };
+        /**
+         * OperationDraft
+         * @description Черновик записи из фразы. В БД он не попадает: человек проверит его
+         *     в окне записи и сохранит обычным /create.
+         */
+        OperationDraft: {
+            category: components["schemas"]["CategoryView"];
+            /** Sum */
+            sum: number | null;
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Comment */
+            comment: string | null;
+        };
         /** OperationView */
         OperationView: {
             /** Id */
@@ -443,6 +483,13 @@ export interface components {
         OperationsPage: {
             /** Data */
             data: components["schemas"]["OperationView"][];
+        };
+        /** ParsePhraseRequest */
+        ParsePhraseRequest: {
+            /** Text */
+            text: string;
+            /** Today */
+            today?: string | null;
         };
         /** PeriodTotalsResponse */
         PeriodTotalsResponse: {
@@ -552,7 +599,7 @@ export interface operations {
                     };
                 };
             };
-            /** @description ����������� ���������� */
+            /** @description Зависимости недоступны */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -788,7 +835,7 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
-            /** @description ������� ����� ������� ����� */
+            /** @description Слишком много попыток входа */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -942,6 +989,46 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    parse_phrase_api_v1_operations_parse_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ParsePhraseRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperationDraft"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Языковая модель недоступна или не настроена */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
