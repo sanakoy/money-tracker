@@ -10,6 +10,8 @@ from src.auth.models import User
 from src.auth.password_hashing import get_hashed_password
 from src.category.models import Category
 from src.database import get_session
+from src.llm.base import JsonCompletion
+from src.llm.client import get_llm_client
 from src.main import app
 from src.operation.models import Operation
 from src.redis_client import get_redis
@@ -73,6 +75,36 @@ async def client():
         # Снимаем только свою подмену: другие тесты могут подменять свои зависимости
         app.dependency_overrides.pop(get_session, None)
         app.dependency_overrides.pop(get_redis, None)
+
+
+class FakeLLM:
+    """Модель для тестов ручек: отдаёт заготовленные ответы по очереди
+    и запоминает, о чём её спросили. Ответ — словарь аргументов или исключение."""
+
+    def __init__(self):
+        self.answers = []
+        self.requests = []
+
+    async def complete(self, messages, *, temperature=None):
+        raise AssertionError("тест не ожидал обычного ответа модели")
+
+    async def complete_json(self, messages, output, *, temperature=None):
+        self.requests.append((list(messages), output))
+        # Без заготовленного ответа — ошибка теста, а не поход в настоящий GigaChat
+        if not self.answers:
+            raise AssertionError("тест не задал ответ модели")
+        answer = self.answers.pop(0)
+        if isinstance(answer, Exception):
+            raise answer
+        return JsonCompletion(data=answer, total_tokens=100)
+
+
+@pytest.fixture
+def fake_llm():
+    llm = FakeLLM()
+    app.dependency_overrides[get_llm_client] = lambda: llm
+    yield llm
+    app.dependency_overrides.pop(get_llm_client, None)
 
 
 # Счётчики общие на весь прогон: имена уникальны, даже если объекты создаются в разных тестах

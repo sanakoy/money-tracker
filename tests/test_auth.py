@@ -21,6 +21,7 @@ PROTECTED_ENDPOINTS = [
     ("DELETE", "/api/v1/categories/delete/1"),
     ("GET", "/api/v1/operations"),
     ("GET", "/api/v1/operations/totals?date_from=2026-09-01&date_to=2026-09-30"),
+    ("POST", "/api/v1/operations/parse"),
     ("POST", "/api/v1/operations/create"),
     ("PATCH", "/api/v1/operations/update/1"),
     ("DELETE", "/api/v1/operations/delete/1"),

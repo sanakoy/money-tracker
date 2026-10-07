@@ -3,12 +3,19 @@ from typing import Annotated, Any, Literal
 
 from pydantic import ConfigDict, Field, StringConstraints, model_validator
 
+from src.category.schemas import CategoryView
 from src.schemas import BaseSchema, MonthFilter, reject_explicit_nulls
 
 # Сумма всегда положительная: доход это или расход, решает тип категории
 OperationSum = Annotated[float, Field(gt=0)]
 # Длина совпадает с колонкой operation.comment
-OperationComment = Annotated[str, StringConstraints(max_length=100)]
+COMMENT_MAX_LENGTH = 100
+OperationComment = Annotated[str, StringConstraints(max_length=COMMENT_MAX_LENGTH)]
+# Фраза короткая, вроде «кофе 350 вчера». Лимит держит запрос к модели
+# маленьким: каждый символ — это токены, а токены стоят денег
+PhraseText = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)
+]
 
 
 class CreateOperationRequest(BaseSchema):
@@ -111,3 +118,21 @@ class OperationView(BaseSchema):
 
 class OperationsPage(BaseSchema):
     data: list[OperationView]
+
+
+class ParsePhraseRequest(BaseSchema):
+    text: PhraseText
+    # Сегодняшняя дата у пользователя: в 00:30 по Москве на сервере в UTC ещё
+    # вчера, и «вчера» из фразы уехало бы на день. Не передана — дата сервера
+    today: date | None = None
+
+
+class OperationDraft(BaseSchema):
+    """Черновик записи из фразы. В БД он не попадает: человек проверит его
+    в окне записи и сохранит обычным /create."""
+
+    category: CategoryView
+    # None — суммы во фразе не было, её впишет человек
+    sum: float | None
+    date: date
+    comment: str | None

@@ -13,17 +13,27 @@ from gigachat.exceptions import AuthenticationError, RateLimitError, ServerError
 from gigachat.models.chat_completions import (
     ChatCompletionResponse,
     ChatContentPart,
+    ChatFunctionCall,
     ChatMessage,
     ChatUsage,
 )
 from pydantic import SecretStr, ValidationError
 
-from src.llm.base import Completion, LLMError, Message
+from src.llm.base import Completion, JsonCompletion, LLMError, Message, OutputSchema
 from src.llm.client import get_llm_client
 from src.llm.gigachat_client import GigaChatClient, create_gigachat_client
 from src.settings import Settings, settings
 
 MODEL = "GigaChat-2"
+OUTPUT = OutputSchema(
+    name="add_operation",
+    description="Записать трату или доход",
+    schema={
+        "type": "object",
+        "properties": {"category": {"type": "string"}, "sum": {"type": "number"}},
+        "required": ["category"],
+    },
+)
 
 
 class FakeChat:
@@ -51,6 +61,27 @@ def gigachat_answer(text: str) -> ChatCompletionResponse:
         messages=[ChatMessage(role="assistant", content=[ChatContentPart(text=text)])],
         usage=ChatUsage(total_tokens=42),
     )
+
+
+def function_call_answer(
+    arguments, *, in_content: bool = True
+) -> ChatCompletionResponse:
+    call = ChatFunctionCall(name="add_operation", arguments=arguments)
+    # GigaChat-2 кладёт вызов в часть содержимого, а по схеме SDK он — поле сообщения
+    message = (
+        ChatMessage(role="assistant", content=[ChatContentPart(function_call=call)])
+        if in_content
+        else ChatMessage(role="assistant", function_call=call)
+    )
+    return ChatCompletionResponse(messages=[message], usage=ChatUsage(total_tokens=42))
+
+
+async def ask(llm: GigaChatClient, method: str):
+    """Один и тот же запрос обычным ответом или JSON по схеме."""
+    messages = [Message("user", "кофе 350")]
+    if method == "complete":
+        return await llm.complete(messages)
+    return await llm.complete_json(messages, OUTPUT)
 
 
 def answer_without_messages() -> ValidationError:
@@ -95,23 +126,77 @@ async def test_complete_sends_dialog_and_returns_answer():
     ],
     ids=["ошибка сервера", "лимит запросов", "таймаут", "ответ без messages"],
 )
-async def test_provider_failure_is_llm_error(error):
+@pytest.mark.parametrize("method", ["complete", "complete_json"])
+async def test_provider_failure_is_llm_error(error, method):
     llm = GigaChatClient(FakeSDK(error=error), model=MODEL)
 
     with pytest.raises(LLMError) as raised:
-        await llm.complete([Message("user", "кофе 350")])
+        await ask(llm, method)
 
     # Исходная ошибка не теряется: по ней видно, что именно случилось
     assert raised.value.__cause__ is error
 
 
-async def test_answer_without_text_is_llm_error():
+@pytest.mark.parametrize("method", ["complete", "complete_json"])
+async def test_answer_without_messages_is_llm_error(method):
     llm = GigaChatClient(
         FakeSDK(answer=ChatCompletionResponse(messages=[])), model=MODEL
     )
 
     with pytest.raises(LLMError):
-        await llm.complete([Message("user", "кофе 350")])
+        await ask(llm, method)
+
+
+async def test_complete_json_forces_function_call():
+    arguments = {"category": "Кафе", "sum": 350}
+    sdk = FakeSDK(answer=function_call_answer(arguments))
+    llm = GigaChatClient(sdk, model=MODEL)
+
+    completion = await llm.complete_json(
+        [Message("user", "кофе 350")], OUTPUT, temperature=0.1
+    )
+
+    assert completion == JsonCompletion(data=arguments, total_tokens=42)
+    [request] = sdk.achat.requests
+    # Схема ответа уходит параметрами функции, а вызвать её модель обязана
+    [function] = request.tools[0].functions.specifications
+    assert (function.name, function.description) == (OUTPUT.name, OUTPUT.description)
+    assert function.parameters == OUTPUT.schema
+    assert request.tool_config.mode == "forced"
+    assert request.tool_config.function_name == OUTPUT.name
+    assert request.model_options.temperature == 0.1
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        function_call_answer({"category": "Кафе"}, in_content=False),
+        function_call_answer('{"category": "Кафе"}'),
+    ],
+    ids=["вызов в поле сообщения", "аргументы JSON-строкой"],
+)
+async def test_complete_json_accepts_other_answer_shapes(answer):
+    llm = GigaChatClient(FakeSDK(answer=answer), model=MODEL)
+
+    completion = await llm.complete_json([Message("user", "кофе")], OUTPUT)
+
+    assert completion.data == {"category": "Кафе"}
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        gigachat_answer("Не могу ответить"),
+        function_call_answer("{не json"),
+        function_call_answer("[1, 2]"),
+    ],
+    ids=["текст вместо вызова", "аргументы не JSON", "аргументы не объект"],
+)
+async def test_complete_json_without_arguments_is_llm_error(answer):
+    llm = GigaChatClient(FakeSDK(answer=answer), model=MODEL)
+
+    with pytest.raises(LLMError):
+        await llm.complete_json([Message("user", "кофе 350")], OUTPUT)
 
 
 def test_no_key_turns_llm_off():

@@ -4,9 +4,9 @@
 GigaChat) или подставить в тестах фейк, не трогая сами фичи.
 """
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Literal, Protocol
+from typing import Any, Literal, Protocol
 
 Role = Literal["system", "user", "assistant"]
 
@@ -24,6 +24,25 @@ class Completion:
     total_tokens: int | None = None
 
 
+@dataclass(frozen=True)
+class OutputSchema:
+    """Каким должен быть ответ: JSON-объект по схеме.
+
+    Имя и описание подсказывают модели, что это за объект. Имя — латиницей:
+    этого требует GigaChat.
+    """
+
+    name: str
+    description: str
+    schema: Mapping[str, Any]
+
+
+@dataclass(frozen=True)
+class JsonCompletion:
+    data: dict[str, Any]
+    total_tokens: int | None = None
+
+
 class LLMError(Exception):
     """Модель не дала ответа: сеть, таймаут, лимит запросов, ошибка провайдера
     или ответ не в том формате.
@@ -38,4 +57,17 @@ class LLMClient(Protocol):
         self, messages: Sequence[Message], *, temperature: float | None = None
     ) -> Completion:
         """Ответ модели на диалог. Если ответа нет, бросает LLMError."""
+        ...
+
+    async def complete_json(
+        self,
+        messages: Sequence[Message],
+        output: OutputSchema,
+        *,
+        temperature: float | None = None,
+    ) -> JsonCompletion:
+        """Ответ модели — JSON-объект по схеме output. Если ответа нет, бросает LLMError.
+
+        Схема — подсказка модели, а не гарантия: данные проверяет вызывающий код.
+        """
         ...
