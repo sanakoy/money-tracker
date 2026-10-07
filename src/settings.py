@@ -1,6 +1,7 @@
+import base64
 from pathlib import Path
 
-from pydantic import SecretStr
+from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import URL
 
@@ -60,7 +61,30 @@ class Settings(BaseSettings):
         env_file=ENV_PATH,
         env_file_encoding="utf-8",
         extra="ignore",
+        # Иначе pydantic печатает в ошибке исходное значение, даже у SecretStr:
+        # неверный ключ или пароль попал бы в консоль и логи
+        hide_input_in_errors=True,
     )
+
+    @field_validator("GIGACHAT_CREDENTIALS")
+    @classmethod
+    def check_gigachat_key(cls, key: SecretStr | None) -> SecretStr | None:
+        # Ключ авторизации — это base64 от «Client ID:Client Secret». С другим
+        # значением сервер отвечает невнятным 400 «Can't decode 'Authorization'
+        # header» на первом же запросе к модели, поэтому формат проверяем при старте
+        if not key:
+            return key
+        try:
+            decoded = base64.b64decode(key.get_secret_value(), validate=True)
+        except ValueError:  # binascii.Error — его подкласс
+            decoded = b""
+        if b":" not in decoded:
+            raise ValueError(
+                "это не ключ авторизации. Нужен Authorization Key из личного "
+                "кабинета GigaChat: строка base64 без «Basic », кавычек и угловых "
+                "скобок, а не Client ID и не Client Secret"
+            )
+        return key
 
     @property
     def get_db_url(self) -> URL:

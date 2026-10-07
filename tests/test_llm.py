@@ -138,6 +138,40 @@ def test_missing_certificate_fails_at_startup(tmp_path):
         create_gigachat_client(broken)
 
 
+# Ключ авторизации — base64 от «Client ID:Client Secret»
+VALID_KEY = base64.b64encode(b"client-id:client-secret").decode()
+
+
+def test_valid_gigachat_key_is_accepted():
+    key = Settings(GIGACHAT_CREDENTIALS=VALID_KEY).GIGACHAT_CREDENTIALS
+
+    assert key is not None
+    assert key.get_secret_value() == VALID_KEY
+
+
+@pytest.mark.parametrize(
+    "bad_key",
+    [
+        f"Basic {VALID_KEY}",
+        f"<{VALID_KEY}>",
+        "0193b6a4-5f2e-7c1d-9a8b-3e4f5a6b7c8d",
+        base64.b64encode(b"client-secret-only").decode(),
+    ],
+    ids=[
+        "с Basic",
+        "в угловых скобках",
+        "Client ID или Secret",
+        "base64 без двоеточия",
+    ],
+)
+def test_malformed_gigachat_key_fails_at_startup(bad_key):
+    with pytest.raises(ValidationError, match="не ключ авторизации") as raised:
+        Settings(GIGACHAT_CREDENTIALS=bad_key)
+
+    # Сам ключ в текст ошибки не попадает: иначе он ушёл бы в консоль и логи
+    assert bad_key not in str(raised.value)
+
+
 async def test_get_llm_client_without_key_is_503(monkeypatch):
     monkeypatch.setattr("src.llm.client.llm_client", None)
 

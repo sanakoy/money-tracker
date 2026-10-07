@@ -83,7 +83,7 @@ npm run gen:api    # типы API из OpenAPI бэкенда в src/api/schema.
 ### Тесты и проверки
 
 ```bash
-uv run pytest                    # 178 тестов против настоящих PostgreSQL и Redis
+uv run pytest                    # 183 теста против настоящих PostgreSQL и Redis
 uv run pytest -m live            # тесты с настоящим GigaChat: сеть, ключ в .env
 uv run ruff check src tests      # линтер
 uv run black --check src tests   # форматирование
