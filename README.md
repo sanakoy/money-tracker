@@ -85,16 +85,17 @@ npm run gen:api    # типы API из OpenAPI бэкенда в src/api/schema.
 ### Тесты и проверки
 
 ```bash
-uv run pytest                    # 224 теста против настоящих PostgreSQL и Redis
-uv run pytest -m live            # тесты с настоящим GigaChat: сеть, ключ в .env
-uv run ruff check src tests      # линтер
-uv run black --check src tests   # форматирование
-uv run mypy                      # типы
+uv run pytest                              # 224 теста против настоящих PostgreSQL и Redis
+uv run pytest -m live                      # тесты с настоящим GigaChat: сеть, ключ в .env
+uv run python -m evals.phrase_parsing.run  # качество разбора фраз на наборе: GigaChat, тратит токены
+uv run ruff check src tests evals          # линтер
+uv run black --check src tests evals       # форматирование
+uv run mypy                                # типы
 
 cd frontend
-npm run lint                     # oxlint
-npm test                         # vitest
-npm run build                    # проверка типов и сборка
+npm run lint                               # oxlint
+npm test                                   # vitest
+npm run build                              # проверка типов и сборка
 ```
 
 Всё это же запускает CI на каждый push в `main`/`develop` и на каждый pull request, а заодно проверяет, что оба Docker-образа собираются.

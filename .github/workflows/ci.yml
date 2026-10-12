@@ -34,10 +34,10 @@ jobs:
       - run: uv sync --locked
 
       - name: ruff
-        run: uv run ruff check src tests
+        run: uv run ruff check src tests evals
 
       - name: black
-        run: uv run black --check src tests
+        run: uv run black --check src tests evals
 
       - name: mypy
         run: uv run mypy

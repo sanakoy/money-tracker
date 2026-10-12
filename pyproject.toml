@@ -72,7 +72,7 @@ extend-immutable-calls = [
 
 [tool.mypy]
 python_version = "3.13"
-files = ["src"]
+files = ["src", "evals"]
 plugins = ["pydantic.mypy"]
 # Библиотеки без аннотаций (alembic и прочие) не должны ронять проверку
 ignore_missing_imports = true

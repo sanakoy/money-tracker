@@ -113,3 +113,8 @@ dump.rdb
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# Набор фраз хранится в репозитории вопреки *.csv выше, а результаты его
+# прогонов (evals/phrase_parsing/run.py) — нет
+!evals/phrase_parsing/phrases.csv
+evals/phrase_parsing/results/

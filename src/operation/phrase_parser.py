@@ -61,56 +61,66 @@ class PhraseParser:
                 .order_by(Category.is_profit, Category.name)
             )
         ).all()
-        if not categories:
-            # Модель звать незачем: фразу всё равно не к чему отнести
-            raise HTTPException(
-                status_code=422,
-                detail="Сначала заведите категорию: записи пока не к чему относиться.",
-            )
-        labels = category_labels(categories)
-
-        messages = [
-            Message("system", build_system_prompt(categories_text(labels))),
-            Message("user", request.text),
-        ]
-        try:
-            completion = await self.llm.complete_json(
-                messages, output_schema(list(labels)), temperature=TEMPERATURE
-            )
-            arguments = PhraseArguments.model_validate(completion.data)
-        except LLMError as error:
-            # Саму фразу в лог не пишем: в ней личные траты пользователя
-            logger.warning("Модель не ответила: %s", error)
-            raise unavailable() from error
-        except ValidationError as error:
-            logger.warning("Модель ответила не по схеме")
-            raise unavailable() from error
-
-        answer = arguments.category.strip().casefold()
-        category = {label.casefold(): item for label, item in labels.items()}.get(
-            answer
+        return await draft_from_phrase(
+            self.llm, categories, request.text, request.today or date.today()
         )
-        # «неизвестно» проверяется отдельно: если у пользователя есть категория
-        # с таким названием, ответ модели совпал бы с ней
-        if answer == UNKNOWN_CATEGORY or category is None:
-            raise HTTPException(
-                status_code=422,
-                # Неразрывный пробел: «кофе» и «350» не разъезжаются по строкам
-                detail="Не получилось понять запись. Напишите иначе, например "
-                "«кофе 350», или выберите категорию плиткой.",
-            )
 
-        today = request.today or date.today()
-        days_ago = arguments.days_ago if 0 <= arguments.days_ago <= MAX_DAYS_AGO else 0
-        return OperationDraft(
-            category=CategoryView.model_validate(category),
-            sum=draft_sum(arguments.sum),
-            date=today - timedelta(days=days_ago),
-            # split/join схлопывает пробелы: модель вырезает сумму из середины
-            # фразы, и от неё остаётся двойной пробел
-            comment=" ".join((arguments.comment or "").split())[:COMMENT_MAX_LENGTH]
-            or None,
+
+async def draft_from_phrase(
+    llm: LLMClient, categories: Sequence[Category], text: str, today: date
+) -> OperationDraft:
+    """Черновик по фразе и категориям пользователя.
+
+    Без БД: этим же кодом набор фраз прогоняет evals/phrase_parsing/run.py,
+    поэтому проверка качества идёт по тому, что на самом деле отдаёт ручка.
+    """
+    if not categories:
+        # Модель звать незачем: фразу всё равно не к чему отнести
+        raise HTTPException(
+            status_code=422,
+            detail="Сначала заведите категорию: записи пока не к чему относиться.",
         )
+    labels = category_labels(categories)
+
+    messages = [
+        Message("system", build_system_prompt(categories_text(labels))),
+        Message("user", text),
+    ]
+    try:
+        completion = await llm.complete_json(
+            messages, output_schema(list(labels)), temperature=TEMPERATURE
+        )
+        arguments = PhraseArguments.model_validate(completion.data)
+    except LLMError as error:
+        # Саму фразу в лог не пишем: в ней личные траты пользователя
+        logger.warning("Модель не ответила: %s", error)
+        raise unavailable() from error
+    except ValidationError as error:
+        logger.warning("Модель ответила не по схеме")
+        raise unavailable() from error
+
+    answer = arguments.category.strip().casefold()
+    category = {label.casefold(): item for label, item in labels.items()}.get(answer)
+    # «неизвестно» проверяется отдельно: если у пользователя есть категория
+    # с таким названием, ответ модели совпал бы с ней
+    if answer == UNKNOWN_CATEGORY or category is None:
+        raise HTTPException(
+            status_code=422,
+            # Неразрывный пробел: «кофе» и «350» не разъезжаются по строкам
+            detail="Не получилось понять запись. Напишите иначе, например "
+            "«кофе 350», или выберите категорию плиткой.",
+        )
+
+    days_ago = arguments.days_ago if 0 <= arguments.days_ago <= MAX_DAYS_AGO else 0
+    return OperationDraft(
+        category=CategoryView.model_validate(category),
+        sum=draft_sum(arguments.sum),
+        date=today - timedelta(days=days_ago),
+        # split/join схлопывает пробелы: модель вырезает сумму из середины
+        # фразы, и от неё остаётся двойной пробел
+        comment=" ".join((arguments.comment or "").split())[:COMMENT_MAX_LENGTH]
+        or None,
+    )
 
 
 def unavailable() -> HTTPException:
