@@ -10,7 +10,7 @@ import logging
 import math
 from collections import Counter
 from collections.abc import Sequence
-from datetime import date, timedelta
+from datetime import date
 
 from fastapi import Depends, HTTPException
 from pydantic import BaseModel, ValidationError
@@ -23,6 +23,7 @@ from src.category.schemas import CategoryView
 from src.database import get_session
 from src.llm.base import LLMClient, LLMError, Message, OutputSchema
 from src.llm.client import get_llm_client
+from src.operation.phrase_dates import resolve_date
 from src.operation.phrase_prompt import UNKNOWN_CATEGORY, build_system_prompt
 from src.operation.schemas import COMMENT_MAX_LENGTH, OperationDraft, ParsePhraseRequest
 
@@ -31,17 +32,24 @@ logger = logging.getLogger(__name__)
 # Подобрана в песочнице: ответы стабильные, но не одинаковые до символа.
 # Ноль GigaChat не принимает
 TEMPERATURE = 0.1
-# Дальше года назад фраза вроде «кофе 350» не уводит: такое число — ошибка модели
-MAX_DAYS_AGO = 366
 
 
 class PhraseArguments(BaseModel):
     """Аргументы, которые заполнила модель. Схема — подсказка, а не гарантия,
-    поэтому ответ проверяется, как любой внешний ввод."""
+    поэтому ответ проверяется, как любой внешний ввод.
+
+    Поля даты — то, что сказано во фразе, а не сама дата: её считает
+    resolve_date. Значения вне календаря здесь не отбрасываются, иначе
+    «day: 32» обернулся бы отказом всей фразы, а не датой «сегодня».
+    """
 
     category: str
     sum: float | None = None
-    days_ago: int = 0
+    day_offset: int | None = None
+    day: int | None = None
+    month: int | None = None
+    weekday: int | None = None
+    future: bool | None = None
     comment: str | None = None
 
 
@@ -111,11 +119,17 @@ async def draft_from_phrase(
             "«кофе 350», или выберите категорию плиткой.",
         )
 
-    days_ago = arguments.days_ago if 0 <= arguments.days_ago <= MAX_DAYS_AGO else 0
     return OperationDraft(
         category=CategoryView.model_validate(category),
         sum=draft_sum(arguments.sum),
-        date=today - timedelta(days=days_ago),
+        date=resolve_date(
+            today,
+            day_offset=arguments.day_offset,
+            day=arguments.day,
+            month=arguments.month,
+            weekday=arguments.weekday,
+            future=arguments.future is True,
+        ),
         # split/join схлопывает пробелы: модель вырезает сумму из середины
         # фразы, и от неё остаётся двойной пробел
         comment=" ".join((arguments.comment or "").split())[:COMMENT_MAX_LENGTH]
@@ -173,13 +187,43 @@ def output_schema(labels: list[str]) -> OutputSchema:
                     "type": "number",
                     "description": "Сумма в рублях; не заполняй, если суммы во фразе нет",
                 },
-                "days_ago": {
+                # Поля даты — то, что сказано во фразе. Саму дату считает код
+                "day_offset": {
                     "type": "integer",
-                    "description": "Сколько дней назад: 0 — сегодня, 1 — вчера",
+                    "description": "Смещение в днях от сегодня: «вчера» — -1, "
+                    "«сегодня» — 0, «завтра» — 1, «3 дня назад» — -3. Если таких "
+                    "слов во фразе нет — 0",
+                },
+                "day": {
+                    "type": "integer",
+                    "description": "Число месяца, только если оно названо во "
+                    "фразе: «27 числа» — 27",
+                },
+                "month": {
+                    "type": "integer",
+                    "description": "Номер месяца, только если он назван во фразе: "
+                    "«5 октября» — 10",
+                },
+                "weekday": {
+                    "type": "integer",
+                    "description": "День недели, только если он назван словом: "
+                    "«в пятницу» — 5 (1 — понедельник, 7 — воскресенье). Для "
+                    "«вчера», «сегодня», «завтра» не заполняй — это day_offset",
+                },
+                "future": {
+                    "type": "boolean",
+                    "description": "true, если глагол в будущем времени: «куплю», "
+                    "«заплачу»; false, если в прошедшем или время не понять",
                 },
                 "comment": {"type": "string", "description": "Что это было, коротко"},
             },
-            "required": ["category", "days_ago"],
+            # day_offset обязательное. Необязательное обе модели пропускали
+            # и вместо «вчера» писали weekday — день недели вчерашнего дня,
+            # не зная сегодняшнего. Если во фразе названо число, модель ставит
+            # смещение 0, а resolve_date всё равно смотрит сначала на число.
+            # future обязательное по той же причине: необязательное Lite
+            # пропускала на «куплю», и дата уходила в прошлое
+            "required": ["category", "day_offset", "future"],
         },
     )
 

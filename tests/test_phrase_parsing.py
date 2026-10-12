@@ -5,6 +5,7 @@
 Тест с меткой live ходит в настоящий GigaChat: uv run pytest -m live
 """
 
+import re
 from datetime import date, timedelta
 
 import pytest
@@ -13,7 +14,8 @@ from src.llm.base import LLMError
 from src.llm.client import get_llm_client
 from src.llm.gigachat_client import create_gigachat_client
 from src.main import app
-from src.operation.phrase_prompt import UNKNOWN_CATEGORY
+from src.operation.phrase_parser import output_schema
+from src.operation.phrase_prompt import SYSTEM_PROMPT, UNKNOWN_CATEGORY
 from src.settings import settings
 from tests.utils import auth_headers
 
@@ -30,7 +32,7 @@ async def parse(client, user, text="кофе 350", today=TODAY):
 
 def answer(category="Кафе", **fields):
     """Аргументы, которыми «модель» заполнила функцию."""
-    return {"category": category, "days_ago": 0, **fields}
+    return {"category": category, **fields}
 
 
 async def test_parse_phrase(client, fake_llm, create_user, create_category):
@@ -40,7 +42,7 @@ async def test_parse_phrase(client, fake_llm, create_user, create_category):
     other_user = await create_user()
     await create_category(other_user, name="Чужая категория")
     fake_llm.answers.append(
-        {"category": "Кафе", "sum": 350, "days_ago": 1, "comment": "кофе с собой"}
+        {"category": "Кафе", "sum": 350, "day_offset": -1, "comment": "кофе с собой"}
     )
 
     response = await parse(client, user, "вчера кофе с собой 350")
@@ -160,16 +162,34 @@ async def test_draft_sum(
 
 
 @pytest.mark.parametrize(
-    "days_ago, draft_date",
-    [(0, "2026-10-07"), (2, "2026-10-05"), (-1, "2026-10-07"), (400, "2026-10-07")],
-    ids=["сегодня", "позавчера", "в будущем", "больше года назад"],
+    "fields, draft_date",
+    [
+        ({}, "2026-10-07"),
+        ({"day_offset": -2}, "2026-10-05"),
+        ({"day_offset": 1}, "2026-10-08"),
+        ({"day_offset": 400}, "2026-10-07"),
+        ({"day": 27}, "2026-09-27"),
+        ({"day": 27, "future": True}, "2026-10-27"),
+        ({"weekday": 5, "future": True}, "2026-10-09"),
+    ],
+    ids=[
+        "даты нет",
+        "позавчера",
+        "завтра",
+        "больше года назад",
+        "27 числа",
+        "27 числа, будущее время",
+        "в пятницу, будущее время",
+    ],
 )
 async def test_draft_date(
-    client, fake_llm, create_user, create_category, days_ago, draft_date
+    client, fake_llm, create_user, create_category, fields, draft_date
 ):
+    # Календарь подробно проверяет test_phrase_dates.py. Здесь — что ручка
+    # передаёт поля модели в расчёт и считает от даты пользователя
     user = await create_user()
     await create_category(user, name="Кафе")
-    fake_llm.answers.append(answer(sum=350, days_ago=days_ago))
+    fake_llm.answers.append(answer(sum=350, **fields))
 
     response = await parse(client, user)
 
@@ -181,7 +201,7 @@ async def test_draft_date_without_today_uses_server_date(
 ):
     user = await create_user()
     await create_category(user, name="Кафе")
-    fake_llm.answers.append(answer(sum=350, days_ago=1))
+    fake_llm.answers.append(answer(sum=350, day_offset=-1))
 
     before = date.today()
     response = await parse(client, user, today=None)
@@ -214,6 +234,14 @@ async def test_draft_comment(
     assert response.json()["comment"] == comment
 
 
+def test_prompt_describes_every_schema_field():
+    # Поля описаны и в промпте, и в схеме функции. Переименование в одном месте
+    # модель получила бы как противоречие: промпт просит одно поле, схема — другое
+    for name in output_schema(["Кафе"]).schema["properties"]:
+        # \b: «day» не должен засчитаться за счёт «day_offset»
+        assert re.search(rf"\b{name}\b", SYSTEM_PROMPT), name
+
+
 async def test_no_categories(client, fake_llm, create_user, create_category):
     user = await create_user()
     fake_llm.answers.append(answer(sum=350))
@@ -233,8 +261,8 @@ async def test_no_categories(client, fake_llm, create_user, create_category):
     "failure",
     [
         LLMError("GigaChat ответил 500"),
-        {"category": "Кафе", "days_ago": "вчера"},
-        {"sum": 350, "days_ago": 0},
+        {"category": "Кафе", "day_offset": "вчера"},
+        {"sum": 350, "day_offset": 0},
     ],
     ids=["модель недоступна", "аргумент не того типа", "нет категории"],
 )

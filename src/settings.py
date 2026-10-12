@@ -48,14 +48,18 @@ class Settings(BaseSettings):
     GIGACHAT_CREDENTIALS: SecretStr | None = None
     # GIGACHAT_API_PERS — доступ для физлиц, в том числе бесплатный
     GIGACHAT_SCOPE: str = "GIGACHAT_API_PERS"
-    # GigaChat-2 — это Lite: быстрее и в разы дешевле GigaChat-2-Pro
-    GIGACHAT_MODEL: str = "GigaChat-2"
+    # На наборе фраз (evals/phrase_parsing) Pro разбирает верно 97 %, а GigaChat-2
+    # (Lite) — 92 %: Lite хуже понимает сленг и время глагола. Зато Lite в 2–3
+    # раза быстрее, и бесплатный лимит у неё больше
+    GIGACHAT_MODEL: str = "GigaChat-2-Pro"
     # Корневой сертификат Минцифры, которым подписаны серверы GigaChat (certs/README.md)
     GIGACHAT_CA_BUNDLE_FILE: Path = (
         BASE_DIR / "certs" / "russian_trusted_root_ca_pem.crt"
     )
-    # Ответа ждёт человек: дольше 10 секунд лучше показать ошибку
-    GIGACHAT_TIMEOUT: float = 10
+    # Pro отвечает в среднем за 2–3 секунды, но бывает и 10: с таймаутом 10 с
+    # такие запросы падали. Дольше 20 секунд человек ждать не станет — лучше
+    # показать ошибку
+    GIGACHAT_TIMEOUT: float = 20
 
     model_config = SettingsConfigDict(
         env_file=ENV_PATH,
